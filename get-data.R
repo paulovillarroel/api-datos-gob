@@ -1,46 +1,21 @@
+# Taller de Datos Abiertos 2024
+
+## Instalación de librería ----
+
+install.packages(c("tidyverse", "arrow", "janitor", "chilemapas"))
+
+## Carga de librerías ----
+
 library(tidyverse)
 library(arrow)
+library(chilemapas)
+library(plotly)
 
 ## Descarga del dataset ----
 
-# Opción 1
 url <- "https://datos.gob.cl/dataset/606ef5bb-11d1-475b-b69f-b980da5757f4/resource/ae6c9887-106d-4e98-8875-40bf2b836041/download/at_urg_respiratorio_semanal.parquet"
 
 data <- read_parquet(url)
-
-
-# Opción 2
-library(curl)
-
-output_path <- "at_urg_respiratorio_semanal.parquet"
-
-curl_download(url, output_path)
-
-data2 <- read_parquet(output_path)
-
-
-# Opción 3
-library(httr2)
-
-output_path <- "at_urg_respiratorio_semanal.parquet"
-
-request <- request(url) |>
-  req_perform(path = output_path)
-
-data3 <- read_parquet(output_path)
-
-
-# Opción 4
-library(ckanr)
-
-ckanr_setup(url = "https://datos.gob.cl")
-
-resource_id <- "ae6c9887-106d-4e98-8875-40bf2b836041"
-
-resource_info <- resource_show(resource_id)
-
-data4 <- read_parquet(resource_info$url)
-
 
 ## Exploración de los datos ----
 data <- data |> 
@@ -138,8 +113,6 @@ data |>
 
 ## Generación de mapas ----
 
-library(chilemapas)
-
 grafico_comunas <- mapa_comunas |> 
   st_set_geometry(mapa_comunas$geometry) |>
   ggplot() +
@@ -206,7 +179,6 @@ mapa_comunas_filtrado |>
 
 
 # Mapa interactivo
-library(plotly)
 
 # Preparar el mapa
 p <- mapa_comunas_filtrado |> 

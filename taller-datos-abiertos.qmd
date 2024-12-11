@@ -42,9 +42,7 @@ Primero, cargaremos las bibliotecas necesarias para nuestro análisis. Recuerda 
 #| eval: false
 
 # Instalar las librerías
-install.packages("tidyverse")
-install.packages("arrow")
-install.packages("janitor")
+install.packages(c("tidyverse", "arrow", "janitor", "chilemapas", "httr"))
 ```
 
 ```{r setup}
@@ -82,7 +80,6 @@ Acá un ejemplo:
 #| message: false
 #| warning: false
 
-# install.packages("httr")
 library(httr)
 
 download_parquet <- function(url, max_attempts = 10) {
