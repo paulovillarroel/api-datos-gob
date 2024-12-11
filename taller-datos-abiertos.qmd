@@ -18,6 +18,22 @@ Este documento presenta un análisis de los datos de urgencias respiratorias en 
 
 ![](images/paste-1.png)
 
+# Programas a usar
+
+El taller está desarrollado en el lenguaje de programación R, el cual es un lenguaje especializado en el análisis de datos.
+
+Para usarlo, [necesitas instalarlo](https://cloud.r-project.org/) primero en tu computador.
+
+Para interactuar con el lenguaje y poder escribir código, necesitas un *entorno de desarrollo* (IDE). Hay varias alternativas, pero puedes elegir alguna de éstas:
+
+-   Instalar [RStudio](https://posit.co/download/rstudio-desktop/)
+
+-   Instalar [Positron](https://positron.posit.co/)
+
+Si no te quieres complicar con instalaciones, puedes [acceder al Google Colab](https://colab.research.google.com/drive/1MOiXKhoK5j4Om3SxTKM5FEMolEMSw78f?usp=sharing) del taller. Si usas este formato, debes configurar a R como el entorno de ejecución para que reconozca el lenguaje.
+
+También puedes ver el código en el repositorio de Github.
+
 # Configuración Inicial
 
 Primero, cargaremos las bibliotecas necesarias para nuestro análisis. Recuerda que debes instalarlas primero si no las tienes.
