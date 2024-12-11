@@ -1,0 +1,4 @@
+- source: taller-datos-abiertos.qmd
+  quarto-pub:
+    - id: 42e6a2f6-d80a-44fb-b50a-f842e41c11b8
+      url: 'https://paulovillarroel.quarto.pub/taller-datos-abiertos-chile-2024'

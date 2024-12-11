@@ -1,0 +1,444 @@
+---
+title: "Análisis de Datos de Urgencias Respiratorias en Chile"
+subtitle: "Taller de datos abiertos 2024 (datos.gob.cl)"
+author: "Paulo Villarroel"
+format: 
+  html:
+    toc: true
+    toc-title: "Contenido"
+    toc-depth: 3
+    code-fold: show
+---
+
+# Introducción
+
+Este documento presenta un análisis de los datos de urgencias respiratorias en Chile, específicamente enfocándose en casos de neumonía. Utilizaremos datos abiertos proporcionados por el gobierno chileno para explorar patrones temporales y distribución geográfica de los casos. Este es material complementario al taller de datos abiertos organizado por Gobierno Digital de Chile (diciembre 2024).
+
+✅ Los datos usados los puedes encontrar en <https://datos.gob.cl/dataset/atenciones-de-urgencia-causas-respiratorias>
+
+![](images/paste-1.png)
+
+# Configuración Inicial
+
+Primero, cargaremos las bibliotecas necesarias para nuestro análisis. Recuerda que debes instalarlas primero si no las tienes.
+
+```{r install-packages}
+#| eval: false
+
+# Instalar las librerías
+install.packages("tidyverse")
+install.packages("arrow")
+install.packages("janitor")
+```
+
+```{r setup}
+#| message: false
+#| warning: false
+
+# Cargar librerías
+library(tidyverse)
+library(arrow)
+library(janitor)
+```
+
+# Descarga de Datos
+
+Existen varias formas de descargar los datos desde la plataforma [http://datos.gob.cl](http://datos.gob.cl/). Aquí presentamos diferentes opciones:
+
+## Opción 1: Descarga Directa con Arrow
+
+La forma más directa es utilizar `read_parquet` de la biblioteca Arrow:
+
+```{r download-option1}
+#| eval: false
+
+url <- "https://datos.gob.cl/dataset/606ef5bb-11d1-475b-b69f-b980da5757f4/resource/ae6c9887-106d-4e98-8875-40bf2b836041/download/at_urg_respiratorio_semanal.parquet"
+
+data <- read_parquet(url)
+```
+
+Es posible que falle la descarga del archivo por temas de seguridad de la plataforma las primeras veces. Teóricamente, al realizar varios intentos desde la misma computadora, el sistema debería permitir la descarga. Para implementar una estrategia de reintentos con un máximo de 10 intentos, podemos usar un bucle que maneje errores y realice la descarga nuevamente en caso de fallar.\
+
+Acá un ejemplo:
+
+```{r download-attempts}
+#| eval: true
+#| message: false
+#| warning: false
+
+# install.packages("httr")
+library(httr)
+
+download_parquet <- function(url, max_attempts = 10) {
+  temp_file <- tempfile(fileext = ".parquet")
+  
+  for (i in 1:max_attempts) {
+    message(sprintf("Intento %d de %d", i, max_attempts))
+    
+    tryCatch({
+      response <- GET(url, write_disk(temp_file, overwrite = TRUE))
+      
+      if (status_code(response) == 200) {
+        message("Descarga exitosa")
+        return(read_parquet(temp_file))
+      }
+    }, error = function(e) {
+      if (i == max_attempts) stop("Error en la descarga después de ", max_attempts, " intentos")
+      Sys.sleep(2)
+    })
+  }
+}
+
+# Uso
+url <- "https://datos.gob.cl/dataset/606ef5bb-11d1-475b-b69f-b980da5757f4/resource/ae6c9887-106d-4e98-8875-40bf2b836041/download/at_urg_respiratorio_semanal.parquet"
+
+data <- download_parquet(url)
+```
+
+## Opción 2: Usando curl
+
+Alternativamente, podemos descargar primero el archivo y luego leerlo:
+
+```{r download-option2}
+#| eval: false
+
+# install.packages("curl")
+library(curl)
+
+output_path <- "at_urg_respiratorio_semanal.parquet"
+curl_download(url, output_path)
+data2 <- read_parquet(output_path)
+```
+
+## Opción 3: Usando httr2
+
+Una tercera opción es utilizar la biblioteca httr2:
+
+```{r download-option3}
+#| eval: false
+
+# install.packages(httr2)
+library(httr2)
+
+output_path <- "at_urg_respiratorio_semanal.parquet"
+request <- request(url) |>
+  req_perform(path = output_path)
+
+data3 <- read_parquet(output_path)
+```
+
+## Opción 4: Usando ckanr
+
+También podemos acceder a través de la API de datos.gob.cl y lalibrería ckanr:
+
+```{r download-option4}
+#| eval: false
+
+# install.packages("ckanr")
+library(ckanr)
+
+ckanr_setup(url = "https://datos.gob.cl")
+resource_id <- "ae6c9887-106d-4e98-8875-40bf2b836041"
+resource_info <- resource_show(resource_id)
+data4 <- read_parquet(resource_info$url)
+```
+
+# Análisis Exploratorio
+
+## Limpieza y Preparación de Datos
+
+Primero, limpiamos los nombres de las columnas para facilitar su uso:
+
+```{r data-prep}
+data <- data |> 
+  janitor::clean_names()
+
+colnames(data)
+```
+
+```{r example-data}
+head(data)
+```
+
+## Análisis de Casos de Neumonía por Año
+
+Veamos la evolución total de casos de neumonía en hospitales:
+
+```{r cases-by-year}
+casos_neumonia_anio <- data |> 
+  filter(tipo_establecimiento == "Hospital",
+         causa == "Neumonía (J12-J18)") |>
+  summarise(total_casos = sum(num_total), .by = anio)
+
+casos_neumonia_anio |> 
+  ggplot(aes(anio, total_casos)) +
+  geom_line() +
+  labs(title = "Casos Totales de Neumonía por Año",
+       x = "Año",
+       y = "Total de Casos") +
+  theme_minimal()
+```
+
+## Análisis por Grupos de Edad
+
+Analicemos la distribución de casos por grupos de edad a lo largo del tiempo:
+
+```{r cases-by-age}
+data |> 
+  filter(tipo_establecimiento == "Hospital",
+         causa == "Neumonía (J12-J18)") |>
+  pivot_longer(
+    cols = matches("num"),
+    names_to = "edad_grupo",
+    values_to = "casos"
+  ) |>
+  filter(edad_grupo != "num_total") |> 
+  summarise(total_casos = sum(casos),
+            .by = c(anio, edad_grupo, semana_estadistica)) |>
+  ggplot(aes(semana_estadistica, total_casos, color = edad_grupo)) +
+  geom_line() +
+  scale_color_brewer(palette = "Set1") +
+  facet_wrap(~anio) +
+  labs(title = "Casos de Neumonía por Grupo de Edad y Semana",
+       x = "Semana Estadística",
+       y = "Total de Casos",
+       color = "Grupo de Edad") +
+  theme_minimal()
+```
+
+## Análisis Detallado para 2024
+
+Veamos específicamente los datos del año 2024:
+
+```{r cases-2024}
+data |> 
+  filter(tipo_establecimiento == "Hospital",
+         causa == "Neumonía (J12-J18)",
+         anio == 2024) |>
+  pivot_longer(
+    cols = matches("num"),
+    names_to = "edad_grupo",
+    values_to = "casos"
+  ) |>
+  filter(edad_grupo != "num_total") |> 
+  summarise(total_casos = sum(casos),
+            .by = c(edad_grupo, semana_estadistica)) |>
+  ggplot(aes(semana_estadistica, total_casos, color = edad_grupo)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Casos de Neumonía por Grupo de Edad en 2024",
+       x = "Semana Estadística",
+       y = "Total de Casos",
+       color = "Grupo de Edad") +
+  theme_minimal()
+```
+
+Veamos la tendencia de casos que consultan el servicios de urgencia de hospitales, durante el 2024, del grupo etario entre 5 a 14 años y que parece ser uno de los grupos con más rápido crecimiento en este año:
+
+```{r cases-2024-child}
+data |> 
+  filter(tipo_establecimiento == "Hospital",
+         causa == "Neumonía (J12-J18)",
+         anio == 2024) |> 
+  summarise(total_casos = sum(num5a14anios),
+            .by = semana_estadistica) |>
+  ggplot(aes(semana_estadistica, total_casos)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Casos de Neumonía Grupo Edad 5 a 14 años en 2024",
+       x = "Semana Estadística",
+       y = "Total de Casos",
+       color = "Grupo de Edad") +
+  theme_minimal()
+```
+
+Por las características propias del dataset, que tiene actualización semanal, habitualmente la semana actual tiende a estar incompleta, lo que puede generar una distorsión de los datos. Para corregir eso, se recomienda eliminar la última semana epidemiológica del año en curso. Para ello, podemos hacer lo siguiente:
+
+```{r last-week}
+# Extrae la última semana estadística del año 2024
+ultima_semana <- data |>
+  filter(anio == 2024) |>
+  distinct(semana_estadistica) |>
+  arrange(semana_estadistica) |>
+  pull(semana_estadistica) |>
+  last()
+
+# Filtra los datos para excluir el año 2024 con la última semana estadística encontrada
+data <- data |>
+  filter(!(anio == 2024 & semana_estadistica == ultima_semana))
+```
+
+Veamos nuevamente el gráfico, pero sin la última semana:
+
+```{r cases-2024-child2}
+data |> 
+  filter(tipo_establecimiento == "Hospital",
+         causa == "Neumonía (J12-J18)",
+         anio == 2024) |> 
+  summarise(total_casos = sum(num5a14anios),
+            .by = semana_estadistica) |>
+  ggplot(aes(semana_estadistica, total_casos)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Casos de Neumonía Grupo Edad 5 a 14 años en 2024",
+       x = "Semana Estadística",
+       y = "Total de Casos",
+       color = "Grupo de Edad") +
+  theme_minimal()
+```
+
+```{r cases-2024-resume}
+data |> 
+  filter(tipo_establecimiento == "Hospital",
+         causa == "Neumonía (J12-J18)",
+         anio == 2024) |>
+  pivot_longer(
+    cols = matches("num"),
+    names_to = "edad_grupo",
+    values_to = "casos"
+  ) |>
+  filter(edad_grupo != "num_total") |> 
+  summarise(total_casos = sum(casos),
+            .by = c(edad_grupo, semana_estadistica))
+```
+
+# Análisis Geográfico
+
+## Preparación de Mapas
+
+Para el análisis geográfico, utilizaremos la biblioteca chilemapas:
+
+Nota: Si quieres profundicar sobre la creación de mapas, puedes [acceder a este tutorial](https://bastianolea.rbind.io/blog/tutorial_mapa_chile/) que explica de forma muy completa estos temas. Parte de este código está tomado de él.
+
+```{r maps-setup}
+#| message: false
+#| warning: false
+
+# install.packages("chilemapas")
+library(chilemapas)
+
+# Crear mapa base de comunas
+grafico_comunas <- mapa_comunas |> 
+  st_set_geometry(mapa_comunas$geometry) |>
+  ggplot() +
+  geom_sf()
+
+# Ajustar vista
+grafico_comunas + 
+  coord_sf(xlim = c(-77, -65)) +
+  theme_classic()
+```
+
+## Mapa de Regiones
+
+Creamos un mapa agregado por regiones:
+
+```{r region-map}
+mapa_regiones <- mapa_comunas |> 
+  group_by(codigo_region) |> 
+  summarize(geometry = st_union(geometry))
+
+grafico_regiones <- mapa_regiones |> 
+  st_set_geometry(mapa_regiones$geometry) |>
+  ggplot() + 
+  geom_sf() + 
+  coord_sf(xlim = c(-77, -65)) +
+  theme_classic()
+
+grafico_regiones
+```
+
+## Mapa de Casos de Neumonía 2024
+
+Visualizamos la distribución geográfica de casos:
+
+```{r cases-map}
+# Preparar datos de neumonía 2024
+neumonias_2024 <- data |> 
+  filter(causa == "Neumonía (J12-J18)",
+         anio == 2024) |> 
+  summarise(total_casos = sum(num_total), .by = c(comuna_codigo, comuna_glosa))
+
+# Unir con datos geográficos
+mapa_comunas_2 <- mapa_comunas |>
+  left_join(neumonias_2024, by = c("codigo_comuna" = "comuna_codigo")) |> 
+  mutate(total_casos = replace_na(total_casos, 0))
+
+# Crear mapa
+mapa_comunas_2 |> 
+  st_set_geometry(mapa_comunas_2$geometry) |>
+  ggplot() + 
+  aes(fill = total_casos) +
+  geom_sf(linewidth = 0.1, color = "gray40") +
+  theme_classic() +
+  scale_fill_distiller(type = "seq", palette = "PuRd", direction = "rev") +
+  scale_x_continuous(breaks = seq(-76, -65, length.out = 3)) +
+  coord_sf(xlim = c(-77, -65)) +
+  theme(legend.key.width = unit(3, "mm")) +
+  labs(title = "Distribución de Casos de Neumonía por Comuna (2024)",
+       fill = "Total de Casos")
+```
+
+## Mapa Detallado de la Región Metropolitana
+
+Finalmente, creamos un mapa específico para la RM:
+
+```{r rm-map}
+# Filtrar RM
+mapa_comunas_filtrado <- mapa_comunas_2 |> 
+  filter(codigo_region == "13")
+
+# Crear mapa
+mapa_comunas_filtrado |> 
+  st_set_geometry(mapa_comunas_filtrado$geometry) |>
+  ggplot() + 
+  aes(fill = total_casos) +
+  geom_sf(linewidth = 0.1, color = "gray40") +
+  geom_sf_text(aes(label = comuna_glosa), size = 2.5, color = "black", check_overlap = TRUE) +
+  theme_classic() +
+  scale_fill_distiller(type = "seq", palette = "PuRd", direction = "rev") +
+  scale_x_continuous(breaks = seq(-76, -65, length.out = 3)) +
+  theme(legend.key.width = unit(3, "mm"),
+        axis.title = element_blank()) +
+  labs(title = "Casos de Neumonía en la Región Metropolitana (2024)",
+       fill = "Total de Casos")
+```
+
+# Mapa Interactivo
+
+Para una visualización más dinámica, podemos crear un mapa interactivo:
+
+```{r interactive-map}
+#| eval: true
+#| message: false
+#| warning: false
+
+library(plotly)
+
+p <- mapa_comunas_filtrado |> 
+  st_set_geometry(mapa_comunas_filtrado$geometry) |>
+  ggplot() + 
+  aes(fill = total_casos) +
+  geom_sf(linewidth = 0.1, color = "gray40") +
+  geom_sf_text(aes(label = comuna_glosa), size = 2.5, color = "black", check_overlap = TRUE) +
+  theme_classic() +
+  scale_fill_distiller(type = "seq", palette = "PuRd", direction = "rev") +
+  scale_x_continuous(breaks = seq(-76, -65, length.out = 3)) +
+  theme(legend.key.width = unit(3, "mm"),
+        axis.title = element_blank()) +
+  labs(title = "Mapa Interactivo de Casos de Neumonía (RM)",
+       fill = "Total de Casos")
+
+ggplotly(p)
+```
+
+# Conclusiones
+
+Este análisis nos ha permitido explorar los patrones temporales y geográficos de los casos de neumonía en Chile, con especial énfasis en el año 2024. Hemos podido observar:
+
+1.  La distribución temporal de casos a lo largo de los años
+2.  Las diferencias entre grupos de edad
+3.  La distribución geográfica de casos en todo el país
+4.  Un análisis detallado de la situación en la Región Metropolitana
+
+Los mapas y visualizaciones proporcionan una clara imagen de la situación epidemiológica y pueden ser útiles para la toma de decisiones en salud pública.
